@@ -1,0 +1,9 @@
+[package]
+name = "s3_parquet"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+parquet2 = { version = "^0.1.0", default-features = false }
+rust-s3 = { version = "0.27.0-rc4", features = ["blocking", "tokio"] }
+ranged-reader = { path = "../../" }

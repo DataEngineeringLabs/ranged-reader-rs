@@ -1,0 +1,11 @@
+[package]
+name = "range-reader"
+version = "0.1.0"
+license = "Apache-2.0"
+description = "Converts low-level APIs to read ranges of bytes to `Read + Seek`"
+homepage = "https://github.com/jorgecarleitao/range-reader-rs"
+repository = "https://github.com/jorgecarleitao/range-reader-rs"
+authors = ["Jorge C. Leitao <jorgecarleitao@gmail.com>"]
+edition = "2018"
+
+[dependencies]
