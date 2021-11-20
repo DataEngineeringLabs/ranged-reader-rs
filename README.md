@@ -4,35 +4,35 @@
 [![codecov](https://codecov.io/gh/DataEngineeringLabs/ranged-reader-rs/branch/main/graph/badge.svg?token=AgyTF60R3D)](https://codecov.io/gh/DataEngineeringLabs/ranged-reader-rs)
 
 Convert low-level APIs to read ranges of files into structs that implement
-`Read + Seek` and `AsyncRead + AsyncSeek`.
-
-See [tests/parquet_s3_async.rs](tests/parquet_s3_async.rs) for an example of this API to
+`Read + Seek` and `AsyncRead + AsyncSeek`. See
+[parquet_s3_async.rs](tests/it/parquet_s3_async.rs) for an example of this API to
 read parts of a large parquet file from s3 asynchronously.
 
 ### Rational
 
-Some blob storage APIs offer the ability to read ranges of bytes from them, i.e. functions of the
-form
+Blob storage https APIs offer the ability to read ranges of bytes from a single blob,
+i.e. functions of the form
 
 ```rust
-async fn read_range(blob, start: usize, len: usize) -> Vec<u8>;
-fn read_range_blocking(blob, start: usize, len: usize) -> Vec<u8>;
+fn read_range_blocking(path: &str, start: usize, length: usize) -> Vec<u8>;
+async fn read_range(path: &str, start: usize, length: usize) -> Vec<u8>;
 ```
 
-together with its total size, 
+together with its total size,
 
 ```rust
-async fn length(blob) -> usize;
-fn length(blob) -> usize;
+async fn length(path: &str) -> usize;
+fn length(path: &str) -> usize;
 ```
 
-These APIs are usually IO-bounded.
+These APIs are usually IO-bounded - they wait for network.
 
-On the other end, some file formats (e.g. Apache Parquet, Apache Avro) allow seeks to
-relevant parts of the file, e.g. for filter and projection push down.
+Some file formats (e.g. Apache Parquet, Apache Avro, Apache Arrow IPC) allow reading
+parts of a file for filter and projection push down.
 
 This crate offers 2 structs, `RangedReader` and `RangedStreamer` that implement
-`Read + Seek` and `AsyncRead + AsyncSeek` respectively, expecting the APIs declared above.
+`Read + Seek` and `AsyncRead + AsyncSeek` respectively, to bridge the blob storage
+APIs mentioned above to the traits used by most Rust APIs to read bytes.
 
 ## License
 
