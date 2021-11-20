@@ -1,131 +1,123 @@
-use futures::{
-    io::{AsyncRead, AsyncSeek},
-    Future, FutureExt,
-};
 use std::io::{Result, SeekFrom};
-use std::marker::Unpin;
+use std::pin::Pin;
 
-/// Implements `AsyncRead + AsyncSeek` for a non-blocking function that reads bytes.
-/// # Implementation
-/// This struct
-pub struct RangedStreamer<F: Future + Unpin> {
-    pos: u64,
-    length: u64,     // total size
-    buffer: Vec<u8>, // a ring
-    offset: usize,   // offset in the ring: buffer[:offset] have been read
-    range_fn: Box<dyn Fn(usize, &mut [u8]) -> F>,
+use futures::{
+    future::BoxFuture,
+    io::{AsyncRead, AsyncSeek},
+    Future,
+};
+
+/// A range of bytes with a known starting position.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RangeOutput {
+    /// the start
+    pub start: u64,
+    /// the data
+    pub data: Vec<u8>,
 }
 
-impl<F: Future + Unpin> RangedStreamer<F> {
-    pub fn new(
-        length: usize,
-        range_fn: Box<dyn Fn(usize, &mut [u8]) -> F>,
-        mut buffer: Vec<u8>,
-    ) -> Self {
+/// A function that returns a [`BoxFuture`] of [`RangeOutput`].
+/// For example, an async request to return a range of bytes from a blob from the internet.
+pub type RangedFuture =
+    Box<dyn Fn(u64, usize) -> BoxFuture<'static, std::io::Result<RangeOutput>> + Send + Sync>;
+
+/// A struct that converts [`RangedFuture`] to a `AsyncRead + AsyncSeek` with an internal buffer.
+pub struct RangedAsyncReader {
+    pos: u64,
+    length: u64, // total size
+    state: State,
+    ranged_future: RangedFuture,
+    min_request_size: usize, // requests have at least this size
+}
+
+enum State {
+    HasChunk(RangeOutput),
+    Seeking(BoxFuture<'static, std::io::Result<RangeOutput>>),
+}
+
+impl RangedAsyncReader {
+    /// Creates a new [`RangedAsyncReader`]. `length` is the total size of the blob being seeked,
+    /// `min_request_size` is the minimum number of bytes allowed to be requested to `range_get`.
+    pub fn new(length: usize, min_request_size: usize, ranged_future: RangedFuture) -> Self {
         let length = length as u64;
-        buffer.clear();
         Self {
             pos: 0,
-            range_fn,
             length,
-            buffer,
-            offset: 0,
+            state: State::HasChunk(RangeOutput {
+                start: 0,
+                data: vec![],
+            }),
+            ranged_future,
+            min_request_size,
         }
-    }
-
-    async fn read_more(&mut self, to_consume: usize) -> Result<()> {
-        let remaining = self.buffer.len() - self.offset;
-
-        if to_consume < remaining {
-            return Ok(());
-        }
-        let to_read = std::cmp::max(
-            std::cmp::max(self.offset, to_consume),
-            self.buffer.capacity(),
-        ) - remaining;
-
-        self.buffer.rotate_left(self.offset);
-        self.buffer.resize(remaining + to_read, 0);
-
-        (self.range_fn)(self.pos as usize, &mut self.buffer[remaining..]).await;
-        self.pos += to_read as u64;
-        self.offset = 0;
-        Ok(())
     }
 }
 
-impl<F: Future + Unpin> AsyncRead for RangedStreamer<F> {
+// whether `test_interval` is inside `a` (start, length).
+// a    = [          ]
+// test =    [     ]
+// returns true
+fn range_includes(a: (usize, usize), test_interval: (usize, usize)) -> bool {
+    if test_interval.0 < a.0 {
+        return false;
+    }
+    let test_end = test_interval.0 + test_interval.1;
+    let a_end = a.0 + a.1;
+    if test_end > a_end {
+        return false;
+    }
+    true
+}
+
+impl AsyncRead for RangedAsyncReader {
     fn poll_read(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut [u8],
     ) -> std::task::Poll<Result<usize>> {
-        let to_consume = buf.len();
-        self.read_more(to_consume).poll_unpin(cx).map(|x| {
-            x.map(|_| {
-                // copy from the internal buffer.
-                buf[..to_consume]
-                    .copy_from_slice(&self.buffer[self.offset..self.offset + to_consume]);
-                // and offset
-                self.offset += to_consume;
-                to_consume
-            })
-        })
+        let requested_range = (self.pos as usize, buf.len());
+        let min_request_size = self.min_request_size;
+        match &mut self.state {
+            State::HasChunk(output) => {
+                let existing_range = (output.start as usize, output.data.len());
+                if range_includes(existing_range, requested_range) {
+                    let offset = requested_range.0 - existing_range.0;
+                    buf.copy_from_slice(&output.data[offset..offset + buf.len()]);
+                    self.pos += buf.len() as u64;
+                    std::task::Poll::Ready(Ok(buf.len()))
+                } else {
+                    let start = requested_range.0 as u64;
+                    let length = std::cmp::max(min_request_size, requested_range.1);
+                    let future = (self.ranged_future)(start, length);
+                    self.state = State::Seeking(Box::pin(future));
+                    self.poll_read(cx, buf)
+                }
+            }
+            State::Seeking(ref mut future) => match Pin::new(future).poll(cx) {
+                std::task::Poll::Ready(v) => {
+                    match v {
+                        Ok(output) => self.state = State::HasChunk(output),
+                        Err(e) => return std::task::Poll::Ready(Err(e)),
+                    };
+                    self.poll_read(cx, buf)
+                }
+                std::task::Poll::Pending => std::task::Poll::Pending,
+            },
+        }
     }
 }
 
-impl<F: Future + Unpin> AsyncSeek for RangedStreamer<F> {
+impl AsyncSeek for RangedAsyncReader {
     fn poll_seek(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        pos: std::io::SeekFrom,
+        mut self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+        pos: SeekFrom,
     ) -> std::task::Poll<Result<u64>> {
         match pos {
             SeekFrom::Start(pos) => self.pos = pos,
             SeekFrom::End(pos) => self.pos = (self.length as i64 + pos) as u64,
             SeekFrom::Current(pos) => self.pos = (self.pos as i64 + pos) as u64,
         };
-        self.offset = 0;
-        self.buffer.clear();
         std::task::Poll::Ready(Ok(self.pos))
     }
 }
-
-/*
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn test(calls: usize, call_size: usize, buffer: usize) {
-        let length = 100;
-        let range_fn = Box::new(move |start: usize, buf: &mut [u8]| {
-            println!("read call: {} {}", start, buf.len());
-            let iter = (start..start + buf.len()).map(|x| x as u8);
-            buf.iter_mut().zip(iter).for_each(|(x, v)| *x = v);
-            Ok(())
-        });
-
-        let mut reader = RangedReader::new(length, range_fn, vec![0; buffer]);
-
-        let mut to = vec![0; call_size];
-        let mut result = vec![];
-        (0..calls).for_each(|i| {
-            let _ = reader.read(&mut to);
-            result.extend_from_slice(&to);
-            assert_eq!(
-                result,
-                (0..(i + 1) * call_size)
-                    .map(|x| x as u8)
-                    .collect::<Vec<_>>()
-            );
-        });
-    }
-
-    #[test]
-    fn basics() {
-        test(10, 5, 10);
-        test(5, 20, 10);
-        test(10, 7, 10);
-    }
-}
- */

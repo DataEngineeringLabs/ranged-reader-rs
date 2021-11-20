@@ -1,6 +1,13 @@
 # Ranged reader
 
-Convert low-level APIs to read files in ranges into structs that implement `Read + Seek`.
+[![test](https://github.com/DataEngineeringLabs/ranged-reader-rs/actions/workflows/test.yml/badge.svg)](https://github.com/DataEngineeringLabs/ranged-reader-rs/actions/workflows/Build.yml)
+[![codecov](https://codecov.io/gh/DataEngineeringLabs/ranged-reader-rs/branch/main/graph/badge.svg?token=AgyTF60R3D)](https://codecov.io/gh/DataEngineeringLabs/ranged-reader-rs)
+
+Convert low-level APIs to read ranges of files into structs that implement
+`Read + Seek` and `AsyncRead + AsyncSeek`.
+
+See [tests/parquet_s3_async.rs] for an example of this API to read parts of a 
+large parquet file from s3 asynchronously.
 
 ### Rational
 
@@ -21,15 +28,11 @@ fn length(blob) -> usize;
 
 These APIs are usually IO-bounded.
 
-On the other end, some file formats (e.g. `parquet`) allow seeks to relevant parts of 
-the file, e.g. for filter and projection push down.
-
-Yet, many high-level APIs expect a `Read + Seek` API.
+On the other end, some file formats (e.g. Apache Parquet, Apache Avro) allow seeks to
+relevant parts of the file, e.g. for filter and projection push down.
 
 This crate offers 2 structs, `RangedReader` and `RangedStreamer` that implement
 `Read + Seek` and `AsyncRead + AsyncSeek` respectively, expecting the APIs declared above.
-
-Currently, only the sync API is implemented.
 
 ## License
 

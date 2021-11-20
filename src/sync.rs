@@ -6,7 +6,7 @@ type FnAPI = Box<dyn Fn(usize, &mut [u8]) -> Result<()>>;
 /// # Implementation
 /// This struct has an internal `Vec<u8>` that buffers calls.
 pub struct RangedReader {
-    pos: u64,
+    pos: u64,        // position of the seek
     length: u64,     // total size
     buffer: Vec<u8>, // a ring
     offset: usize,   // offset in the ring: buffer[:offset] have been read
@@ -14,6 +14,7 @@ pub struct RangedReader {
 }
 
 impl RangedReader {
+    /// Creates a new [`RangedReader`] with internal buffer `buffer`
     pub fn new(length: usize, range_fn: FnAPI, mut buffer: Vec<u8>) -> Self {
         let length = length as u64;
         buffer.clear();
@@ -71,41 +72,5 @@ impl Seek for RangedReader {
         self.offset = 0;
         self.buffer.clear();
         Ok(self.pos)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn test(calls: usize, call_size: usize, buffer: usize) {
-        let length = 100;
-        let range_fn = Box::new(move |start: usize, buf: &mut [u8]| {
-            let iter = (start..start + buf.len()).map(|x| x as u8);
-            buf.iter_mut().zip(iter).for_each(|(x, v)| *x = v);
-            Ok(())
-        });
-
-        let mut reader = RangedReader::new(length, range_fn, vec![0; buffer]);
-
-        let mut to = vec![0; call_size];
-        let mut result = vec![];
-        (0..calls).for_each(|i| {
-            let _ = reader.read(&mut to);
-            result.extend_from_slice(&to);
-            assert_eq!(
-                result,
-                (0..(i + 1) * call_size)
-                    .map(|x| x as u8)
-                    .collect::<Vec<_>>()
-            );
-        });
-    }
-
-    #[test]
-    fn basics() {
-        test(10, 5, 10);
-        test(5, 20, 10);
-        test(10, 7, 10);
     }
 }
