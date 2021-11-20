@@ -1,13 +1,13 @@
 # Ranged reader
 
-[![test](https://github.com/DataEngineeringLabs/ranged-reader-rs/actions/workflows/test.yml/badge.svg)](https://github.com/DataEngineeringLabs/ranged-reader-rs/actions/workflows/Build.yml)
+[![test](https://github.com/DataEngineeringLabs/ranged-reader-rs/actions/workflows/test.yaml/badge.svg)](https://github.com/DataEngineeringLabs/ranged-reader-rs/actions/workflows/test.yaml)
 [![codecov](https://codecov.io/gh/DataEngineeringLabs/ranged-reader-rs/branch/main/graph/badge.svg?token=AgyTF60R3D)](https://codecov.io/gh/DataEngineeringLabs/ranged-reader-rs)
 
 Convert low-level APIs to read ranges of files into structs that implement
 `Read + Seek` and `AsyncRead + AsyncSeek`.
 
-See [tests/parquet_s3_async.rs] for an example of this API to read parts of a 
-large parquet file from s3 asynchronously.
+See [tests/parquet_s3_async.rs](tests/parquet_s3_async.rs) for an example of this API to
+read parts of a large parquet file from s3 asynchronously.
 
 ### Rational
 
