@@ -24,20 +24,13 @@ jobs:
           submodules: true
       - name: Install Rust
         run: rustup update stable
-      - name: Setup parquet files
-        run: |
-          apt update && apt install python3-pip python3-venv -y -q
-          python3 -m venv venv
-          venv/bin/pip install pip --upgrade
-          venv/bin/pip install pyarrow==3
-          venv/bin/python parquet_integration/write_parquet.py
       - uses: Swatinem/rust-cache@v1
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
       - name: Run coverage
         run: |
-          cargo tarpaulin --features cache_aligned --ignore-tests --out Xml
-          cargo tarpaulin --features full --ignore-tests --out Xml
+          cargo tarpaulin --ignore-tests --out Xml
+          cargo tarpaulin --ignore-tests --out Xml
       - name: Report coverage
         continue-on-error: true
         run: bash <(curl -s https://codecov.io/bash)
