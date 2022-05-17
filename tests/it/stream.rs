@@ -53,7 +53,7 @@ async fn seek_inside() -> std::io::Result<()> {
         let length = 100 - seek;
         let mut result = vec![0; length as usize];
         reader.seek(SeekFrom::Start(seek as u64)).await?;
-        reader.read(&mut result).await?;
+        reader.read_exact(&mut result).await?;
         assert_eq!(result, (seek..100).collect::<Vec<_>>());
     }
 
@@ -68,7 +68,7 @@ async fn seek_new() -> std::io::Result<()> {
         let length = 100 - seek;
         let mut result = vec![0; length as usize];
         reader.seek(SeekFrom::Start(seek as u64)).await?;
-        reader.read(&mut result).await?;
+        reader.read_exact(&mut result).await?;
         assert_eq!(result, (seek..100).collect::<Vec<_>>());
     }
 
@@ -81,12 +81,12 @@ async fn seek_split() -> std::io::Result<()> {
     let mut reader = get_mock_range(2);
     let length = 20;
     let mut result = vec![0; length as usize];
-    reader.read(&mut result).await?;
+    reader.read_exact(&mut result).await?;
     assert_eq!(result, (0..length).collect::<Vec<_>>());
 
     reader.seek(SeekFrom::Start(10)).await?;
     let mut result = vec![0; length as usize];
-    reader.read(&mut result).await?;
+    reader.read_exact(&mut result).await?;
     assert_eq!(result, (10..10 + length).collect::<Vec<_>>());
 
     Ok(())
