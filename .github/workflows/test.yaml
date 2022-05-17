@@ -29,7 +29,6 @@ jobs:
       - name: Run coverage
         run: |
           cargo tarpaulin --ignore-tests --out Xml
-          cargo tarpaulin --ignore-tests --out Xml
       - name: Report coverage
         continue-on-error: true
         run: bash <(curl -s https://codecov.io/bash)
