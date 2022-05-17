@@ -1,6 +1,6 @@
 [package]
 name = "range-reader"
-version = "0.1.0"
+version = "0.2.0"
 license = "Apache-2.0"
 description = "Converts low-level APIs to read ranges of bytes to `Read + Seek`"
 homepage = "https://github.com/DataEngineeringLabs/ranged-reader-rs"
